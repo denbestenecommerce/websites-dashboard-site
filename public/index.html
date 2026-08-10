@@ -239,6 +239,21 @@
   .modal-close { margin-top: 18px; width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--text-primary); }
   .modal-close:hover { background: var(--muted-bg); }
 
+  .mf-input {
+    width: 100%; font: inherit; font-size: 13.5px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: var(--text-primary);
+  }
+  .mf-input:hover { border-color: var(--border); background: var(--muted-bg); }
+  .mf-input:focus { outline: none; border-color: var(--series-blue); background: var(--surface-1); }
+  .mf-textarea { resize: vertical; font-family: inherit; }
+
+  .add-client-btn {
+    padding: 9px 14px; border-radius: 8px; border: 1px solid var(--series-blue);
+    background: var(--series-blue); color: #fff; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    white-space: nowrap;
+  }
+  .add-client-btn:hover { opacity: 0.9; }
+
   @media (max-width: 720px) {
     .stat-row { grid-template-columns: repeat(2, 1fr); }
     .deals-grid { grid-template-columns: 1fr; }
@@ -290,6 +305,7 @@
   </section>
 
   <div class="toolbar">
+    <button type="button" id="addClientBtn" class="add-client-btn">+ Klant toevoegen</button>
     <input type="search" id="searchInput" placeholder="Zoek op klant of website…">
     <select id="statusFilter">
       <option value="">Alle statussen</option>
@@ -318,7 +334,7 @@
         </th>
         <th data-key="gemaaktDoor">Website gemaakt door <span class="arrow"></span></th>
         <th data-key="gebeldOp">Gebeld op <span class="arrow"></span></th>
-        <th data-key="status">Status <span class="arrow"></span></th>
+        <th data-key="status">Status website <span class="arrow"></span></th>
         <th data-key="dealwaarde">Dealwaarde <span class="arrow"></span></th>
         <th data-key="dealStatus">Deal <span class="arrow"></span></th>
         <th data-key="opvolgdatum">Opvolging <span class="arrow"></span></th>
@@ -338,18 +354,21 @@
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-card">
     <h3 id="modalNaam"></h3>
-    <div class="modal-status" id="modalStatusBadge"></div>
+    <div class="modal-field">
+      <div class="mf-label">Status website</div>
+      <div class="mf-value" id="modalStatusBadge"></div>
+    </div>
     <div class="modal-field">
       <div class="mf-label">Website</div>
-      <div class="mf-value" id="modalWebsite">—</div>
+      <div class="mf-value"><input type="text" class="mf-input" id="modalWebsite" data-field="website" placeholder="https://…"></div>
     </div>
     <div class="modal-field">
       <div class="mf-label">Telefoonnummer</div>
-      <div class="mf-value" id="modalTelefoon">—</div>
+      <div class="mf-value"><input type="text" class="mf-input" id="modalTelefoon" data-field="telefoon" placeholder="06-…"></div>
     </div>
     <div class="modal-field">
       <div class="mf-label">E-mailadres</div>
-      <div class="mf-value" id="modalEmail">—</div>
+      <div class="mf-value"><input type="text" class="mf-input" id="modalEmail" data-field="email" placeholder="naam@bedrijf.nl"></div>
     </div>
     <div class="modal-field">
       <div class="mf-label">Verantwoordelijke</div>
@@ -369,7 +388,7 @@
     </div>
     <div class="modal-field">
       <div class="mf-label">Dealwaarde</div>
-      <div class="mf-value" id="modalDealwaarde">—</div>
+      <div class="mf-value"><input type="number" class="mf-input" id="modalDealwaarde" data-field="dealwaarde" placeholder="0"></div>
     </div>
     <div class="modal-field">
       <div class="mf-label">Deal</div>
@@ -377,7 +396,7 @@
     </div>
     <div class="modal-field">
       <div class="mf-label">Notitie</div>
-      <div class="mf-value" id="modalNotitie">—</div>
+      <div class="mf-value"><textarea class="mf-input mf-textarea" id="modalNotitie" data-field="notitie" placeholder="Notitie…" rows="3"></textarea></div>
     </div>
     <button class="modal-close" id="modalCloseBtn">Sluiten</button>
   </div>
@@ -689,13 +708,17 @@
   });
 
   // ---------- rendering ----------
-  function renderAll() {
+  function renderAllExceptModal() {
     renderUrgentToday();
     renderStats();
     renderFollowup();
     renderDealFolders();
     buildOwnerFilterDropdown();
     renderTable();
+  }
+
+  function renderAll() {
+    renderAllExceptModal();
   }
 
   function renderUrgentToday() {
@@ -841,7 +864,7 @@
         <td data-label="Verantwoordelijke">${pickerHtml(idx, 'verantwoordelijke', OWNER_NAMES, r.verantwoordelijke, false)}</td>
         <td data-label="Website gemaakt door">${pickerHtml(idx, 'gemaaktDoor', OWNER_NAMES, r.gemaaktDoor, false)}</td>
         <td data-label="Gebeld op">${dateCellHtml(idx, 'gebeldOp')}</td>
-        <td data-label="Status"><span class="badge ${STATUS_LABELS[r.status] || ''}">${r.status}</span></td>
+        <td data-label="Status website"><span class="badge ${STATUS_LABELS[r.status] || ''}">${r.status}</span></td>
         <td data-label="Dealwaarde">${fmtEuro(r.dealwaarde)}</td>
         <td data-label="Deal">${pickerHtml(idx, 'dealStatus', DEAL_OPTIONS, r.dealStatus, true)}</td>
         <td data-label="Opvolging">${dateCellHtml(idx, 'opvolgdatum')}</td>
@@ -880,30 +903,63 @@
     modalOverlay.classList.add('open');
   }
 
+  document.getElementById('addClientBtn').addEventListener('click', () => {
+    const naam = prompt('Naam van de nieuwe klant / website:');
+    if (!naam || !naam.trim()) return;
+    const nieuweKlant = {
+      naam: naam.trim(),
+      verantwoordelijke: '',
+      gemaaktDoor: '',
+      gebeldOp: '',
+      status: 'Nog te plannen',
+      dealwaarde: '',
+      dealStatus: 'Open',
+      opvolgdatum: '',
+      notitie: '',
+      website: '',
+      telefoon: '',
+      email: ''
+    };
+    raw.push(nieuweKlant);
+    renderAllExceptModal();
+    saveData();
+    openKlantProfiel(nieuweKlant);
+  });
+
   function renderModal() {
     if (currentModalIdx === null) return;
     const r = raw[currentModalIdx];
     document.getElementById('modalNaam').textContent = r.naam;
     document.getElementById('modalStatusBadge').innerHTML =
       `<span class="badge ${STATUS_LABELS[r.status] || ''}">${r.status}</span>`;
-    document.getElementById('modalWebsite').innerHTML = r.website
-      ? `<a href="${r.website}" target="_blank" rel="noopener">${r.website}</a>` : '—';
-    document.getElementById('modalTelefoon').textContent = r.telefoon || '—';
-    document.getElementById('modalEmail').textContent = r.email || '—';
+    document.getElementById('modalWebsite').value = r.website || '';
+    document.getElementById('modalTelefoon').value = r.telefoon || '';
+    document.getElementById('modalEmail').value = r.email || '';
     document.getElementById('modalVerantwoordelijkeHolder').innerHTML = pickerHtml(currentModalIdx, 'verantwoordelijke', OWNER_NAMES, r.verantwoordelijke, false);
     document.getElementById('modalGemaaktDoorHolder').innerHTML = pickerHtml(currentModalIdx, 'gemaaktDoor', OWNER_NAMES, r.gemaaktDoor, false);
     document.getElementById('modalGebeldOpHolder').innerHTML = dateCellHtml(currentModalIdx, 'gebeldOp');
     document.getElementById('modalOpvolgingHolder').innerHTML = dateCellHtml(currentModalIdx, 'opvolgdatum');
-    document.getElementById('modalDealwaarde').textContent = fmtEuro(r.dealwaarde);
+    document.getElementById('modalDealwaarde').value = r.dealwaarde || '';
     document.getElementById('modalDealStatusHolder').innerHTML = pickerHtml(currentModalIdx, 'dealStatus', DEAL_OPTIONS, r.dealStatus, true);
-    document.getElementById('modalNotitie').textContent = r.notitie || '—';
+    document.getElementById('modalNotitie').value = r.notitie || '';
   }
 
-  function closeKlantProfiel() { modalOverlay.classList.remove('open'); currentModalIdx = null; }
+  function closeKlantProfiel() { modalOverlay.classList.remove('open'); currentModalIdx = null; renderAllExceptModal(); saveData(); }
 
   document.getElementById('modalCloseBtn').addEventListener('click', closeKlantProfiel);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeKlantProfiel(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeKlantProfiel(); });
+
+  // vrije-tekstvelden in het klantprofiel (website, telefoon, e-mail, dealwaarde, notitie):
+  // wijzigingen worden meteen in de data gezet en (na een korte pauze) opgeslagen,
+  // zonder de modal opnieuw op te bouwen (anders verlies je de focus tijdens het typen).
+  document.querySelectorAll('.mf-input[data-field]').forEach(input => {
+    input.addEventListener('input', () => {
+      if (currentModalIdx === null) return;
+      raw[currentModalIdx][input.dataset.field] = input.value;
+      saveData();
+    });
+  });
 
   // renderAll() moet ook de open modal verversen (na een keuzevak-wijziging)
   const _origRenderAll = renderAll;
