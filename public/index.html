@@ -107,9 +107,13 @@
   .followup-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 8px; background: var(--muted-bg); font-size: 13.5px; }
   .followup-item.urgent { background: var(--status-critical-bg); }
   .followup-item.soon { background: var(--status-warning-bg); }
+  .followup-item .fu-info { min-width: 0; }
   .followup-item .fu-name { font-weight: 600; }
   .followup-item .fu-meta { color: var(--text-secondary); }
-  .followup-item .fu-date { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .followup-item .fu-right {
+    flex: 0 0 150px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  }
+  .followup-item .fu-date { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .followup-empty, .deal-empty { color: var(--text-muted); font-size: 13px; padding: 6px 2px; }
 
   .deals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -349,8 +353,7 @@
   </section>
 
   <div class="deal-tabs" id="dealTabs">
-    <button type="button" class="deal-tab active" data-deal="">Alles</button>
-    <button type="button" class="deal-tab" data-deal="Open">Nurture</button>
+    <button type="button" class="deal-tab active" data-deal="Open">Alles</button>
     <button type="button" class="deal-tab" data-deal="Gewonnen">Gewonnen deal</button>
     <button type="button" class="deal-tab" data-deal="Verloren">Verloren deal</button>
   </div>
@@ -676,12 +679,9 @@
 
   function dateCellHtml(idx, field, cls) {
     const value = raw[idx][field] || '';
-    const isFollowup = field === 'opvolgdatum';
-    const opgevolgd = isFollowup && !!raw[idx].opgevolgd;
     return `
       <div class="date-picker" data-idx="${idx}" data-field="${field}">
         <button type="button" class="picker-btn ${cls || ''}"><span class="date-label">${dateLabel(idx, field)}</span> <span class="mini-caret">📅</span></button>
-        ${isFollowup && value ? `<label class="followup-check" data-idx="${idx}"><input type="checkbox" class="followup-done-checkbox" data-idx="${idx}" ${opgevolgd ? 'checked' : ''}> Opgevolgd</label>` : ''}
         <div class="date-panel">
           <input type="date" value="${value}">
           <button type="button" class="date-done-btn">Gereed</button>
@@ -877,12 +877,16 @@
     }
     list.innerHTML = items.map(r => {
       const state = effectiveFollowupState(r);
+      const idx = raw.indexOf(r);
       return `<div class="followup-item ${['verlopen','vandaag'].includes(state) ? 'urgent' : 'soon'}">
-        <div>
+        <div class="fu-info">
           <div class="fu-name">${r.naam}</div>
           <div class="fu-meta">${r.verantwoordelijke || '—'} · ${r.status}${r.notitie ? ' · ' + r.notitie : ''}</div>
         </div>
-        <div class="fu-date">${state === 'verlopen' ? '⚠️ ' : (state === 'vandaag' ? '📌 ' : '')}${fmtDate(r.opvolgdatum)}</div>
+        <div class="fu-right">
+          <div class="fu-date">${state === 'verlopen' ? '⚠️ ' : (state === 'vandaag' ? '📌 ' : '')}${fmtDate(r.opvolgdatum)}</div>
+          <label class="followup-check" data-idx="${idx}"><input type="checkbox" class="followup-done-checkbox" data-idx="${idx}"> Opgevolgd</label>
+        </div>
       </div>`;
     }).join('');
   }
@@ -989,7 +993,7 @@
   document.getElementById('statusFilter').addEventListener('change', renderTable);
   document.getElementById('ownerFilter').addEventListener('change', () => { buildOwnerFilterDropdown(); renderTable(); });
 
-  let currentDealFilter = '';
+  let currentDealFilter = 'Open';
   document.getElementById('dealTabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.deal-tab');
     if (!btn) return;
