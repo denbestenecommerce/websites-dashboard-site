@@ -160,7 +160,18 @@
   .badge.deal-open { background: var(--muted-bg); color: var(--text-secondary); }
   .badge.deal-gewonnen { background: var(--status-good-bg); color: var(--status-good); }
   .badge.deal-verloren { background: var(--status-critical-bg); color: var(--status-critical); }
-  .note-cell { color: var(--text-secondary); max-width: 200px; }
+  .note-cell { color: var(--text-secondary); max-width: 220px; vertical-align: top; }
+  .note-wrap { position: relative; }
+  .note-text { white-space: pre-wrap; word-break: break-word; }
+  .note-wrap:not(.expanded) .note-text {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .note-toggle {
+    display: block; margin-top: 4px; background: none; border: none; padding: 0;
+    font-size: 12px; font-weight: 600; color: var(--series-blue); cursor: pointer;
+  }
+  .note-toggle:hover { text-decoration: underline; }
   .empty-row td { text-align: center; color: var(--text-muted); padding: 24px; }
 
   /* klikbaar keuzevak (naam-picker / dealstatus-picker) */
@@ -238,6 +249,22 @@
   .modal-field .mf-value a:hover { text-decoration: underline; }
   .modal-close { margin-top: 18px; width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--text-primary); }
   .modal-close:hover { background: var(--muted-bg); }
+
+  /* brede notitie-pop-up */
+  .note-modal-card {
+    background: var(--surface-1); border-radius: 14px; border: 1px solid var(--border);
+    width: 100%; max-width: 640px; padding: 24px 28px; box-shadow: 0 12px 40px rgba(11,11,11,0.18);
+    max-height: 80vh; overflow-y: auto;
+  }
+  .note-modal-card h3 { margin: 0 0 14px; font-size: 18px; }
+  .note-modal-body {
+    font-size: 14.5px; line-height: 1.6; color: var(--text-primary);
+    white-space: pre-wrap; word-break: break-word; background: var(--muted-bg);
+    border-radius: 10px; padding: 16px 18px; margin-bottom: 18px;
+  }
+
+  .note-clickable { cursor: pointer; }
+  .note-clickable:hover { text-decoration: underline; text-decoration-color: var(--border); }
 
   .mf-input {
     width: 100%; font: inherit; font-size: 13.5px; padding: 6px 8px; border-radius: 6px;
@@ -402,6 +429,14 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="noteModalOverlay">
+  <div class="note-modal-card">
+    <h3 id="noteModalNaam"></h3>
+    <div class="note-modal-body" id="noteModalBody"></div>
+    <button class="modal-close" id="noteModalCloseBtn">Sluiten</button>
+  </div>
+</div>
+
 <script id="dashboard-data-unused" type="application/json">
 [
   {
@@ -551,6 +586,18 @@
     return new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
   }
 
+  // notitie in de tabel: lange teksten worden ingeklapt tot 2 regels; klik op
+  // de notitie (of "Volledige notitie") opent een brede pop-up om 'm prettig te lezen.
+  function noteCellHtml(idx, notitie) {
+    if (!notitie) return '';
+    const needsToggle = notitie.length > 90 || notitie.split('\n').length > 2;
+    if (!needsToggle) return `<div class="note-text note-clickable" data-idx="${idx}">${notitie}</div>`;
+    return `<div class="note-wrap">
+      <div class="note-text note-clickable" data-idx="${idx}">${notitie}</div>
+      <button type="button" class="note-toggle" data-idx="${idx}">Volledige notitie</button>
+    </div>`;
+  }
+
   const today = new Date();
   today.setHours(0,0,0,0);
 
@@ -622,6 +669,12 @@
   }
 
   document.addEventListener('click', (e) => {
+    const noteClick = e.target.closest('.note-toggle') || e.target.closest('.note-clickable');
+    if (noteClick) {
+      e.stopPropagation();
+      openNoteModal(+noteClick.dataset.idx);
+      return;
+    }
     const toggleBtn = e.target.closest('.picker-btn');
     if (toggleBtn) {
       e.stopPropagation();
@@ -868,7 +921,7 @@
         <td data-label="Dealwaarde">${fmtEuro(r.dealwaarde)}</td>
         <td data-label="Deal">${pickerHtml(idx, 'dealStatus', DEAL_OPTIONS, r.dealStatus, true)}</td>
         <td data-label="Opvolging">${dateCellHtml(idx, 'opvolgdatum')}</td>
-        <td data-label="Notitie" class="note-cell">${r.notitie || ''}</td>
+        <td data-label="Notitie" class="note-cell">${noteCellHtml(idx, r.notitie)}</td>
       </tr>`;
     }).join('');
 
@@ -948,7 +1001,23 @@
 
   document.getElementById('modalCloseBtn').addEventListener('click', closeKlantProfiel);
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeKlantProfiel(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeKlantProfiel(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeKlantProfiel(); closeNoteModal(); });
+
+  // ---------- brede notitie-pop-up ----------
+  const noteModalOverlay = document.getElementById('noteModalOverlay');
+
+  function openNoteModal(idx) {
+    const r = raw[idx];
+    if (!r) return;
+    document.getElementById('noteModalNaam').textContent = r.naam;
+    document.getElementById('noteModalBody').textContent = r.notitie || '';
+    noteModalOverlay.classList.add('open');
+  }
+
+  function closeNoteModal() { noteModalOverlay.classList.remove('open'); }
+
+  document.getElementById('noteModalCloseBtn').addEventListener('click', closeNoteModal);
+  noteModalOverlay.addEventListener('click', (e) => { if (e.target === noteModalOverlay) closeNoteModal(); });
 
   // vrije-tekstvelden in het klantprofiel (website, telefoon, e-mail, dealwaarde, notitie):
   // wijzigingen worden meteen in de data gezet en (na een korte pauze) opgeslagen,
