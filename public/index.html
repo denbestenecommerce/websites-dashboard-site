@@ -129,6 +129,16 @@
   .deal-item .di-meta { color: var(--text-secondary); font-size: 12px; }
   .deal-item .di-value { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+  .deal-tabs {
+    display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--gridline);
+  }
+  .deal-tab {
+    padding: 9px 16px; border: none; background: none; border-bottom: 2px solid transparent;
+    font-size: 13.5px; font-weight: 600; color: var(--text-secondary); cursor: pointer; margin-bottom: -1px;
+  }
+  .deal-tab:hover { color: var(--text-primary); background: var(--muted-bg); border-radius: 6px 6px 0 0; }
+  .deal-tab.active { color: var(--series-blue); border-bottom-color: var(--series-blue); }
+
   .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .toolbar input[type="search"] { flex: 1; min-width: 180px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-1); font-size: 13.5px; color: var(--text-primary); }
   .toolbar select { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-1); font-size: 13.5px; color: var(--text-primary); }
@@ -157,6 +167,7 @@
   .badge.fu-deze-week { background: var(--status-warning-bg); color: #a86a00; }
   .badge.fu-gepland { background: var(--muted-bg); color: var(--text-secondary); }
   .badge.fu-geen { background: var(--muted-bg); color: var(--text-muted); }
+  .badge.fu-opgevolgd { background: var(--status-good-bg); color: var(--status-good); }
   .badge.deal-open { background: var(--muted-bg); color: var(--text-secondary); }
   .badge.deal-gewonnen { background: var(--status-good-bg); color: var(--status-good); }
   .badge.deal-verloren { background: var(--status-critical-bg); color: var(--status-critical); }
@@ -216,6 +227,12 @@
     font-size: 12.5px; font-weight: 600; cursor: pointer;
   }
   .date-panel .date-done-btn:hover { background: var(--series-blue); opacity: 0.9; }
+  .followup-check {
+    display: flex; align-items: center; gap: 5px; margin-top: 4px;
+    font-size: 11.5px; color: var(--text-muted); cursor: pointer; white-space: nowrap;
+  }
+  .followup-check input[type="checkbox"] { cursor: pointer; margin: 0; }
+  .followup-check:hover { color: var(--text-secondary); }
 
   th.has-dropdown .th-dropdown-toggle { display: inline-flex; align-items: center; justify-content: center; margin-left: 4px; padding: 1px 4px; border-radius: 4px; }
   th.has-dropdown .th-dropdown-toggle:hover { background: var(--muted-bg); }
@@ -316,20 +333,27 @@
     <div class="deals-grid">
       <div class="deal-folder won">
         <div class="df-head">
-          <div class="df-title">🟢 Deal gewonnen</div>
+          <div class="df-title">🟢 Gewonnen deal</div>
           <div class="df-total" id="wonTotal"></div>
         </div>
         <div id="wonList"></div>
       </div>
       <div class="deal-folder lost">
         <div class="df-head">
-          <div class="df-title">🔴 Deal verloren</div>
+          <div class="df-title">🔴 Verloren deal</div>
           <div class="df-total" id="lostTotal"></div>
         </div>
         <div id="lostList"></div>
       </div>
     </div>
   </section>
+
+  <div class="deal-tabs" id="dealTabs">
+    <button type="button" class="deal-tab active" data-deal="">Alles</button>
+    <button type="button" class="deal-tab" data-deal="Open">Nurture</button>
+    <button type="button" class="deal-tab" data-deal="Gewonnen">Gewonnen deal</button>
+    <button type="button" class="deal-tab" data-deal="Verloren">Verloren deal</button>
+  </div>
 
   <div class="toolbar">
     <button type="button" id="addClientBtn" class="add-client-btn">+ Klant toevoegen</button>
@@ -339,12 +363,6 @@
       <option value="Nog te plannen">Nog te plannen</option>
       <option value="Lopend">Lopend</option>
       <option value="Gemaakt">Gemaakt</option>
-    </select>
-    <select id="dealFilter">
-      <option value="">Alle deals</option>
-      <option value="Open">Open</option>
-      <option value="Gewonnen">Gewonnen</option>
-      <option value="Verloren">Verloren</option>
     </select>
     <select id="ownerFilter">
       <option value="">Alle collega's</option>
@@ -562,6 +580,9 @@
   const OWNER_NAMES = ['Bart', 'Jasper', 'Jonathan', 'Jordy'];
   const DEAL_OPTIONS = ['Open', 'Gewonnen', 'Verloren'];
   const DEAL_BADGE_CLASS = { 'Open': 'deal-open', 'Gewonnen': 'deal-gewonnen', 'Verloren': 'deal-verloren' };
+  // weergavenamen: de opgeslagen waarde blijft 'Open'/'Gewonnen'/'Verloren',
+  // maar in het scherm gebruiken we de CRM-achtige termen die het team hanteert.
+  const DEAL_LABELS = { 'Open': 'Nurture', 'Gewonnen': 'Gewonnen deal', 'Verloren': 'Verloren deal' };
 
   const STATUS_LABELS = {
     'Nog te plannen': 'status-nog-te-plannen',
@@ -611,8 +632,17 @@
     return 'gepland';
   }
 
-  function followupBadge(s) {
-    const state = followupState(s);
+  // 'opgevolgd' vinkje: zodra dat aan staat telt de opvolging als afgehandeld
+  // en verdwijnt de klant uit de takenlijst (urgent/opvolging-secties), ook al
+  // ligt de datum nog in het verleden of vandaag.
+  function effectiveFollowupState(r) {
+    if (r.opgevolgd) return 'opgevolgd';
+    return followupState(r.opvolgdatum);
+  }
+
+  function followupBadge(r) {
+    if (r.opgevolgd) return '<span class="badge fu-opgevolgd">✓ Opgevolgd</span>';
+    const state = followupState(r.opvolgdatum);
     if (state === 'geen') return '<span class="badge fu-geen">Geen opvolging</span>';
     const map = {
       'verlopen': ['fu-verlopen', 'Verlopen'],
@@ -621,18 +651,19 @@
       'gepland': ['fu-gepland', 'Gepland']
     };
     const [cls, label] = map[state];
-    return `<span class="badge ${cls}">${label} · ${fmtDate(s)}</span>`;
+    return `<span class="badge ${cls}">${label} · ${fmtDate(r.opvolgdatum)}</span>`;
   }
 
   // ---------- generieke naam/deal-picker (klikbaar keuzevak) ----------
   function pickerHtml(idx, field, options, currentValue, badgeStyle) {
-    const label = currentValue || (badgeStyle ? 'Open' : 'Kies naam');
+    const displayLabel = o => badgeStyle ? (DEAL_LABELS[o] || o) : o;
+    const label = badgeStyle ? displayLabel(currentValue || 'Open') : (currentValue || 'Kies naam');
     const btnCls = badgeStyle ? `picker-btn badge-style ${DEAL_BADGE_CLASS[currentValue || 'Open']}` : 'picker-btn';
     return `
       <div class="picker" data-idx="${idx}" data-field="${field}">
         <button type="button" class="${btnCls}">${label} <span class="mini-caret">▾</span></button>
         <div class="picker-panel">
-          ${options.map(o => `<button type="button" data-value="${o}" class="${o === currentValue ? 'active' : ''}">${o}</button>`).join('')}
+          ${options.map(o => `<button type="button" data-value="${o}" class="${o === currentValue ? 'active' : ''}">${displayLabel(o)}</button>`).join('')}
         </div>
       </div>`;
   }
@@ -640,14 +671,17 @@
   // ---------- klikbare datumkiezer (agenda) ----------
   function dateLabel(idx, field) {
     const v = raw[idx][field] || '';
-    return field === 'opvolgdatum' ? followupBadge(v) : (v ? fmtDate(v) : 'Kies datum');
+    return field === 'opvolgdatum' ? followupBadge(raw[idx]) : (v ? fmtDate(v) : 'Kies datum');
   }
 
   function dateCellHtml(idx, field, cls) {
     const value = raw[idx][field] || '';
+    const isFollowup = field === 'opvolgdatum';
+    const opgevolgd = isFollowup && !!raw[idx].opgevolgd;
     return `
       <div class="date-picker" data-idx="${idx}" data-field="${field}">
         <button type="button" class="picker-btn ${cls || ''}"><span class="date-label">${dateLabel(idx, field)}</span> <span class="mini-caret">📅</span></button>
+        ${isFollowup && value ? `<label class="followup-check" data-idx="${idx}"><input type="checkbox" class="followup-done-checkbox" data-idx="${idx}" ${opgevolgd ? 'checked' : ''}> Opgevolgd</label>` : ''}
         <div class="date-panel">
           <input type="date" value="${value}">
           <button type="button" class="date-done-btn">Gereed</button>
@@ -669,6 +703,15 @@
   }
 
   document.addEventListener('click', (e) => {
+    const followupCheckbox = e.target.closest('.followup-done-checkbox');
+    if (followupCheckbox) {
+      e.stopPropagation();
+      const idx = +followupCheckbox.dataset.idx;
+      raw[idx].opgevolgd = followupCheckbox.checked;
+      renderAll();
+      saveData();
+      return;
+    }
     const noteClick = e.target.closest('.note-toggle') || e.target.closest('.note-clickable');
     if (noteClick) {
       e.stopPropagation();
@@ -720,6 +763,7 @@
     const idx = +picker.dataset.idx;
     const field = picker.dataset.field;
     raw[idx][field] = input.value;
+    if (field === 'opvolgdatum') raw[idx].opgevolgd = false; // nieuwe datum = nog niet opgevolgd
     dirty = true;
     const labelEl = picker.querySelector('.date-label');
     if (labelEl) labelEl.innerHTML = dateLabel(idx, field);
@@ -775,7 +819,7 @@
   }
 
   function renderUrgentToday() {
-    const items = raw.filter(r => followupState(r.opvolgdatum) === 'vandaag');
+    const items = raw.filter(r => effectiveFollowupState(r) === 'vandaag');
     const el = document.getElementById('urgentToday');
     if (items.length === 0) {
       el.classList.remove('show');
@@ -799,7 +843,7 @@
     const total = raw.length;
     const lopend = raw.filter(r => r.status === 'Lopend').length;
     const gemaakt = raw.filter(r => r.status === 'Gemaakt').length;
-    const opvolgingNodig = raw.filter(r => ['verlopen','vandaag','deze-week'].includes(followupState(r.opvolgdatum))).length;
+    const opvolgingNodig = raw.filter(r => ['verlopen','vandaag','deze-week'].includes(effectiveFollowupState(r))).length;
 
     document.getElementById('statRow').innerHTML = `
       <div class="stat-tile">
@@ -823,7 +867,7 @@
 
   function renderFollowup() {
     const items = raw
-      .filter(r => ['verlopen','vandaag','deze-week'].includes(followupState(r.opvolgdatum)))
+      .filter(r => ['verlopen','vandaag','deze-week'].includes(effectiveFollowupState(r)))
       .sort((a,b) => parseDate(a.opvolgdatum) - parseDate(b.opvolgdatum));
 
     const list = document.getElementById('followupList');
@@ -832,7 +876,7 @@
       return;
     }
     list.innerHTML = items.map(r => {
-      const state = followupState(r.opvolgdatum);
+      const state = effectiveFollowupState(r);
       return `<div class="followup-item ${['verlopen','vandaag'].includes(state) ? 'urgent' : 'soon'}">
         <div>
           <div class="fu-name">${r.naam}</div>
@@ -875,7 +919,7 @@
   function renderTable() {
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
     const statusF = document.getElementById('statusFilter').value;
-    const dealF = document.getElementById('dealFilter').value;
+    const dealF = currentDealFilter;
     const ownerF = document.getElementById('ownerFilter').value;
 
     let rows = raw.filter(r => {
@@ -943,8 +987,16 @@
 
   document.getElementById('searchInput').addEventListener('input', renderTable);
   document.getElementById('statusFilter').addEventListener('change', renderTable);
-  document.getElementById('dealFilter').addEventListener('change', renderTable);
   document.getElementById('ownerFilter').addEventListener('change', () => { buildOwnerFilterDropdown(); renderTable(); });
+
+  let currentDealFilter = '';
+  document.getElementById('dealTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.deal-tab');
+    if (!btn) return;
+    currentDealFilter = btn.dataset.deal;
+    document.querySelectorAll('.deal-tab').forEach(t => t.classList.toggle('active', t === btn));
+    renderTable();
+  });
 
   // ---------- klantprofiel modal ----------
   const modalOverlay = document.getElementById('modalOverlay');
